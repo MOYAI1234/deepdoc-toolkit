@@ -24,7 +24,13 @@ python parse.py input.pdf
 python parse.py --input ./pdfs --output ./parsed
 ```
 
-支持格式：PDF、Word (.docx/.doc)、图片 (.png/.jpg/.jpeg/.tiff/.bmp)
+启用详细日志：
+
+```bash
+python parse.py --input ./pdfs --output ./parsed --verbose
+```
+
+支持格式：PDF、Word (.docx)、图片 (.png/.jpg/.jpeg/.tiff/.bmp)
 
 ## 输出格式
 
