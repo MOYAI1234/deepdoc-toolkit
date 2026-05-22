@@ -35,7 +35,8 @@ def build_stem_mapping(files: list[Path]) -> dict[str, list[Path]]:
     stem_groups: dict[str, list[Path]] = defaultdict(list)
     for f in files:
         safe_stem = sanitize_filename(f.stem)
-        stem_groups[safe_stem].append(f)
+        key = safe_stem.casefold()
+        stem_groups[key].append(f)
     return stem_groups
 
 
@@ -45,7 +46,8 @@ def resolve_output_path(
     stem_mapping: dict[str, list[Path]],
 ) -> Path:
     safe_stem = sanitize_filename(source_path.stem)
-    group = stem_mapping.get(safe_stem, [])
+    key = safe_stem.casefold()
+    group = stem_mapping.get(key, [])
 
     if len(group) <= 1:
         return output_dir / f"{safe_stem}.md"
