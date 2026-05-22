@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import logging
 import re
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -30,14 +31,26 @@ def sanitize_filename(filename: str) -> str:
     return sanitized[:200] if sanitized else "untitled"
 
 
-def resolve_output_path(output_dir: Path, stem: str, source_path: Path) -> Path:
-    safe_stem = sanitize_filename(stem)
-    out_path = output_dir / f"{safe_stem}.md"
+def build_stem_mapping(files: list[Path]) -> dict[str, list[Path]]:
+    stem_groups: dict[str, list[Path]] = defaultdict(list)
+    for f in files:
+        safe_stem = sanitize_filename(f.stem)
+        stem_groups[safe_stem].append(f)
+    return stem_groups
 
-    if not out_path.exists():
-        return out_path
 
-    source_hash = hashlib.md5(str(source_path).encode()).hexdigest()[:8]
+def resolve_output_path(
+    output_dir: Path,
+    source_path: Path,
+    stem_mapping: dict[str, list[Path]],
+) -> Path:
+    safe_stem = sanitize_filename(source_path.stem)
+    group = stem_mapping.get(safe_stem, [])
+
+    if len(group) <= 1:
+        return output_dir / f"{safe_stem}.md"
+
+    source_hash = hashlib.md5(str(source_path.resolve()).encode()).hexdigest()[:8]
     return output_dir / f"{safe_stem}_{source_hash}.md"
 
 
@@ -160,7 +173,11 @@ def build_markdown(title: str, content: str, tables: list[str], source_file: str
     return "\n\n".join(parts)
 
 
-def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optional[str]:
+def parse_single_file(
+    file_path: str,
+    output_dir: Optional[str] = None,
+    stem_mapping: Optional[dict[str, list[Path]]] = None,
+) -> Optional[str]:
     path = Path(file_path)
 
     if not path.exists():
@@ -190,10 +207,17 @@ def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optio
         source_file=path.name,
     )
 
-    if output_dir:
-        out_path = resolve_output_path(Path(output_dir), path.stem, path)
+    if stem_mapping is None:
+        safe_stem = sanitize_filename(path.stem)
+        if output_dir:
+            out_path = Path(output_dir) / f"{safe_stem}.md"
+        else:
+            out_path = path.parent / f"{safe_stem}.md"
     else:
-        out_path = resolve_output_path(path.parent, path.stem, path)
+        if output_dir:
+            out_path = resolve_output_path(Path(output_dir), path, stem_mapping)
+        else:
+            out_path = resolve_output_path(path.parent, path, stem_mapping)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md_content, encoding="utf-8")
@@ -220,12 +244,14 @@ def batch_parse(input_dir: str, output_dir: str) -> None:
 
     logger.info(f"Found {len(files)} files to parse")
 
+    stem_mapping = build_stem_mapping(files)
+
     success_count = 0
     error_count = 0
 
     for file in tqdm(files, desc="Parsing files"):
         try:
-            result = parse_single_file(str(file), str(output_path))
+            result = parse_single_file(str(file), str(output_path), stem_mapping)
             if result:
                 success_count += 1
                 logger.debug(f"  -> {result}")
