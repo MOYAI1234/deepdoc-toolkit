@@ -54,3 +54,30 @@ python parse.py --input ./pdfs --output ./parsed --verbose
 | --- | --- |
 | 数据1 | 数据2 |
 ```
+
+## 文件名处理
+
+工具会自动处理文件名中的特殊字符和大小写问题：
+
+- **特殊字符**：`<>:"/\|?*` 等字符会被替换为下划线
+- **大小写不敏感**：Windows 系统上 `Foo.pdf` 和 `foo.pdf` 会被识别为碰撞
+- **碰撞处理**：当多个源文件映射到同一输出文件名时，会自动添加 hash 后缀
+
+示例：
+- `report.pdf` → `report.md`
+- `a?b.pdf` + `a*b.pdf` → `a_b_<hash1>.md` + `a_b_<hash2>.md`
+- `Foo.pdf` + `foo.pdf` → `Foo_<hash1>.md` + `foo_<hash2>.md`
+
+## 测试
+
+运行单元测试：
+
+```bash
+python -m pytest test_parse.py -v
+```
+
+测试覆盖：
+- 文件名清理和特殊字符处理
+- 文件名碰撞检测（特殊字符、大小写）
+- Markdown 表格格式化
+- 换行符处理
