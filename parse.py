@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import logging
 import re
 from datetime import datetime
@@ -27,6 +28,17 @@ def sanitize_filename(filename: str) -> str:
     sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
     sanitized = sanitized.strip('. ')
     return sanitized[:200] if sanitized else "untitled"
+
+
+def resolve_output_path(output_dir: Path, stem: str, source_path: Path) -> Path:
+    safe_stem = sanitize_filename(stem)
+    out_path = output_dir / f"{safe_stem}.md"
+
+    if not out_path.exists():
+        return out_path
+
+    source_hash = hashlib.md5(str(source_path).encode()).hexdigest()[:8]
+    return output_dir / f"{safe_stem}_{source_hash}.md"
 
 
 def parse_pdf(file_path: str) -> dict[str, Any]:
@@ -97,7 +109,8 @@ def parse_image(file_path: str) -> dict[str, Any]:
 
 
 def escape_markdown_cell(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ").strip()
+    normalized = " ".join(text.splitlines())
+    return normalized.replace("|", "\\|").strip()
 
 
 def format_table_as_markdown(table: list[list[Any]]) -> str:
@@ -123,9 +136,7 @@ def format_table_as_markdown(table: list[list[Any]]) -> str:
 
 
 def build_markdown(title: str, content: str, tables: list[str], source_file: str) -> str:
-    safe_title = title.replace("\n", " ").strip()
-    if "---" in safe_title:
-        safe_title = safe_title.replace("---", "—")
+    safe_title = " ".join(title.splitlines()).strip()
 
     frontmatter = {
         "标题": safe_title,
@@ -179,11 +190,10 @@ def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optio
         source_file=path.name,
     )
 
-    safe_stem = sanitize_filename(path.stem)
     if output_dir:
-        out_path = Path(output_dir) / f"{safe_stem}.md"
+        out_path = resolve_output_path(Path(output_dir), path.stem, path)
     else:
-        out_path = path.parent / f"{safe_stem}.md"
+        out_path = resolve_output_path(path.parent, path.stem, path)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md_content, encoding="utf-8")
