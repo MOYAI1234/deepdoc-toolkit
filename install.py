@@ -1,33 +1,48 @@
+import logging
 import subprocess
 import sys
-import os
+from pathlib import Path
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
-def check_python_version():
+def check_python_version() -> None:
     if sys.version_info < (3, 10):
-        print(f"Error: Python 3.10+ required, got {sys.version}")
+        logger.error(f"Python 3.10+ required, got {sys.version}")
         sys.exit(1)
-    print(f"Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    logger.info(f"Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
 
-def install_dependencies():
-    requirements = os.path.join(os.path.dirname(__file__), "requirements.txt")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements])
+def install_dependencies() -> None:
+    requirements = Path(__file__).parent / "requirements.txt"
+    if not requirements.exists():
+        logger.error(f"requirements.txt not found at {requirements}")
+        sys.exit(1)
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", str(requirements)])
 
 
-def verify_install():
+def verify_install() -> None:
     try:
         import paddleocr
         import pdfplumber
         import docx
-        print("All dependencies verified OK")
+        import tqdm
+        logger.info("All dependencies verified OK")
     except ImportError as e:
-        print(f"Import error: {e}")
+        logger.error(f"Import error: {e}")
         sys.exit(1)
 
 
-if __name__ == "__main__":
+def main() -> None:
     check_python_version()
     install_dependencies()
     verify_install()
-    print("\nInstallation complete! Run: python parse.py --help")
+    logger.info("Installation complete! Run: python parse.py --help")
+
+
+if __name__ == "__main__":
+    main()

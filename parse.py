@@ -1,9 +1,8 @@
 import argparse
 import logging
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 from tqdm import tqdm
@@ -27,7 +26,7 @@ def get_ocr():
     return _ocr_instance
 
 
-def parse_pdf(file_path: str) -> dict:
+def parse_pdf(file_path: str) -> dict[str, Any]:
     import pdfplumber
 
     texts = []
@@ -52,7 +51,7 @@ def parse_pdf(file_path: str) -> dict:
     }
 
 
-def parse_docx(file_path: str) -> dict:
+def parse_docx(file_path: str) -> dict[str, Any]:
     import docx
 
     doc = docx.Document(file_path)
@@ -76,7 +75,7 @@ def parse_docx(file_path: str) -> dict:
     }
 
 
-def parse_image(file_path: str) -> dict:
+def parse_image(file_path: str) -> dict[str, Any]:
     ocr = get_ocr()
     result = ocr.ocr(file_path, cls=True)
 
@@ -84,7 +83,8 @@ def parse_image(file_path: str) -> dict:
     for line in result:
         if line:
             for word_info in line:
-                texts.append(word_info[1][0])
+                if word_info and len(word_info) >= 2 and word_info[1]:
+                    texts.append(str(word_info[1][0]))
 
     return {
         "title": Path(file_path).stem,
@@ -93,11 +93,13 @@ def parse_image(file_path: str) -> dict:
     }
 
 
-def format_table_as_markdown(table: list[list[str]]) -> str:
+def format_table_as_markdown(table: list[list[Any]]) -> str:
     if not table:
         return ""
 
-    max_cols = max(len(row) for row in table)
+    max_cols = max(len(row) for row in table) if table else 0
+    if max_cols == 0:
+        return ""
 
     rows = []
     for row in table:
@@ -105,15 +107,15 @@ def format_table_as_markdown(table: list[list[str]]) -> str:
         cells.extend([""] * (max_cols - len(cells)))
         rows.append("| " + " | ".join(cells) + " |")
 
-    if len(rows) < 2:
-        return rows[0] if rows else ""
+    if len(rows) < 1:
+        return ""
 
     separator = "| " + " | ".join(["---"] * max_cols) + " |"
 
     return "\n".join([rows[0], separator] + rows[1:])
 
 
-def build_markdown(title: str, content: str, tables: list, source_file: str) -> str:
+def build_markdown(title: str, content: str, tables: list[str], source_file: str) -> str:
     frontmatter = {
         "标题": title,
         "来源": source_file,
@@ -138,6 +140,11 @@ def build_markdown(title: str, content: str, tables: list, source_file: str) -> 
 
 def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optional[str]:
     path = Path(file_path)
+
+    if not path.exists():
+        logger.error(f"File not found: {file_path}")
+        return None
+
     ext = path.suffix.lower()
 
     if ext == ".pdf":
@@ -168,7 +175,7 @@ def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optio
     return str(out_path)
 
 
-def batch_parse(input_dir: str, output_dir: str):
+def batch_parse(input_dir: str, output_dir: str) -> None:
     input_path = Path(input_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -198,7 +205,7 @@ def batch_parse(input_dir: str, output_dir: str):
     logger.info(f"Parsing complete: {success_count} succeeded, {error_count} failed")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="DeepDoc Toolkit - Document parser for game-kb")
     parser.add_argument("input", nargs="?", help="Single file to parse")
     parser.add_argument("--input", dest="input_dir", help="Input directory for batch parsing")
