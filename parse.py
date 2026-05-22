@@ -1,5 +1,6 @@
 import argparse
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -7,10 +8,6 @@ from typing import Any, Optional
 import yaml
 from tqdm import tqdm
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 _ocr_instance = None
@@ -24,6 +21,12 @@ def get_ocr():
         _ocr_instance = PaddleOCR(use_angle_cls=True, lang="ch", show_log=False)
         logger.info("PaddleOCR initialized successfully")
     return _ocr_instance
+
+
+def sanitize_filename(filename: str) -> str:
+    sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    sanitized = sanitized.strip('. ')
+    return sanitized[:200] if sanitized else "untitled"
 
 
 def parse_pdf(file_path: str) -> dict[str, Any]:
@@ -93,6 +96,10 @@ def parse_image(file_path: str) -> dict[str, Any]:
     }
 
 
+def escape_markdown_cell(text: str) -> str:
+    return text.replace("|", "\\|").replace("\n", " ").strip()
+
+
 def format_table_as_markdown(table: list[list[Any]]) -> str:
     if not table:
         return ""
@@ -103,7 +110,7 @@ def format_table_as_markdown(table: list[list[Any]]) -> str:
 
     rows = []
     for row in table:
-        cells = [str(cell).replace("\n", " ").strip() if cell else "" for cell in row]
+        cells = [escape_markdown_cell(str(cell)) if cell else "" for cell in row]
         cells.extend([""] * (max_cols - len(cells)))
         rows.append("| " + " | ".join(cells) + " |")
 
@@ -116,8 +123,12 @@ def format_table_as_markdown(table: list[list[Any]]) -> str:
 
 
 def build_markdown(title: str, content: str, tables: list[str], source_file: str) -> str:
+    safe_title = title.replace("\n", " ").strip()
+    if "---" in safe_title:
+        safe_title = safe_title.replace("---", "—")
+
     frontmatter = {
-        "标题": title,
+        "标题": safe_title,
         "来源": source_file,
         "日期": datetime.now().strftime("%Y-%m-%d"),
         "解析工具": "deepdoc-toolkit",
@@ -145,6 +156,10 @@ def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optio
         logger.error(f"File not found: {file_path}")
         return None
 
+    if not path.is_file():
+        logger.error(f"Not a file: {file_path}")
+        return None
+
     ext = path.suffix.lower()
 
     if ext == ".pdf":
@@ -164,10 +179,11 @@ def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optio
         source_file=path.name,
     )
 
+    safe_stem = sanitize_filename(path.stem)
     if output_dir:
-        out_path = Path(output_dir) / f"{path.stem}.md"
+        out_path = Path(output_dir) / f"{safe_stem}.md"
     else:
-        out_path = path.parent / f"{path.stem}.md"
+        out_path = path.parent / f"{safe_stem}.md"
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md_content, encoding="utf-8")
@@ -178,6 +194,11 @@ def parse_single_file(file_path: str, output_dir: Optional[str] = None) -> Optio
 def batch_parse(input_dir: str, output_dir: str) -> None:
     input_path = Path(input_dir)
     output_path = Path(output_dir)
+
+    if input_path.resolve() == output_path.resolve():
+        logger.error("Input and output directories must be different")
+        return
+
     output_path.mkdir(parents=True, exist_ok=True)
 
     supported = {".pdf", ".docx", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"}
@@ -206,6 +227,11 @@ def batch_parse(input_dir: str, output_dir: str) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
     parser = argparse.ArgumentParser(description="DeepDoc Toolkit - Document parser for game-kb")
     parser.add_argument("input", nargs="?", help="Single file to parse")
     parser.add_argument("--input", dest="input_dir", help="Input directory for batch parsing")
